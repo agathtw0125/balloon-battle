@@ -38,6 +38,13 @@
   .slotGrid .slot{font-size:22px;padding:12px 14px;flex-direction:column;align-items:flex-start;gap:2px}
   .slot.off{opacity:.55}
   #lobby.calHide{visibility:hidden}
+  #hostBar{position:fixed;left:12px;bottom:12px;display:flex;gap:8px;z-index:5}
+  #hostBar button{font-size:16px;font-weight:800;padding:8px 14px;border-radius:999px;background:rgba(255,255,255,.75);color:#334;box-shadow:0 3px 0 rgba(0,0,0,.15)}
+  #hostBar button:hover{background:#fff}
+  #hostBar button.arm{background:#ff6b6b;color:#fff}
+  #miniQr{position:fixed;right:12px;bottom:12px;z-index:6;background:#fff;border-radius:16px;padding:10px;text-align:center;box-shadow:0 6px 0 rgba(0,0,0,.15);animation:bob 1.6s ease-in-out infinite}
+  #miniQr b{display:block;font-size:15px;margin-top:6px;line-height:1.3}
+  #miniQrImg img,#miniQrImg canvas{display:block;margin:0 auto}
   .slot small{font-size:18px;font-weight:700;opacity:.95}
   .slot.off small::after{content:"";display:inline-block;width:1.2em;animation:dots 1.2s steps(4) infinite;text-align:left}
   @keyframes dots{0%{content:""}25%{content:"."}50%{content:".."}75%{content:"..."}}
@@ -83,6 +90,13 @@
   .calMap i.now{background:#ffd32a;color:#223;transform:scale(1.5);animation:pulse .8s infinite}
   .calRow{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
   #calRec{background:#ffd32a}
+  #pMenu{position:fixed;inset:0;z-index:20;background:rgba(10,15,35,.94);display:flex;align-items:center;justify-content:center;padding:20px}
+  .menuBox{width:100%;max-width:360px;display:flex;flex-direction:column;gap:14px;text-align:center}
+  .menuBox h2{font-size:30px;margin-bottom:6px}
+  .menuBox p{font-size:18px;opacity:.85}
+  .modeBtn.alt{background:#4a5170;color:#fff;box-shadow:0 6px 0 #2c3148}
+  .modeBtn:disabled{opacity:.4}
+  #mHome{background:#ff9f9f}
   #stunCover{position:fixed;inset:0;background:rgba(80,40,120,.75);display:flex;align-items:center;justify-content:center;font-size:44px;font-weight:900;pointer-events:none}
 </style>
 </head>
@@ -120,6 +134,15 @@
   </div>
 </div>
 
+<div id="hostBar" hidden>
+  <button id="hbPause">⏸ 暫停</button>
+  <button id="hbHome">🏠 回首頁</button>
+</div>
+<div id="miniQr" hidden>
+  <div id="miniQrImg"></div>
+  <b>📵 斷線了？<br>掃這裡回到遊戲</b>
+</div>
+
 <!-- ===== 手機 ===== -->
 <div id="pad" hidden>
   <div class="pScreen" id="pConnect">
@@ -153,8 +176,7 @@
     <div class="pTop">
       <span class="badge" id="pBadge2">🔴 1P</span>
       <button class="smallBtn" id="btnCenter">⊕ 置中</button>
-      <button class="smallBtn" id="btnCal">🎯 校準</button>
-      <button class="smallBtn" id="btnMode">切換</button>
+      <button class="smallBtn" id="btnMenu">☰ 選單</button>
       <span class="sc" id="pScore">0 分</span>
     </div>
     <div id="pHint">準備好了嗎？</div>
@@ -165,6 +187,22 @@
     </div>
   </div>
   <div id="stunCover" hidden>💫 暈倒了！</div>
+  <div id="pMenu" hidden>
+    <div class="menuBox" id="menuMain">
+      <h2>☰ 選單</h2>
+      <button class="modeBtn" id="mPause">⏸ 暫停遊戲</button>
+      <button class="modeBtn" id="mCal">🎯 重新校準（5 點）</button>
+      <button class="modeBtn" id="mSwitch">👆 改用手指滑動</button>
+      <button class="modeBtn" id="mHome">🏠 大家回首頁</button>
+      <button class="modeBtn alt" id="mClose">✖ 關閉選單</button>
+    </div>
+    <div class="menuBox" id="menuConfirm" hidden>
+      <h2>確定要讓大家<br>回到首頁嗎？</h2>
+      <p>這一場的分數會清掉喔</p>
+      <button class="modeBtn" id="mYes">✅ 確定回首頁</button>
+      <button class="modeBtn alt" id="mNo">↩ 不要，繼續玩</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -255,6 +293,8 @@ function startHost(){
   }));
   const active = p => p.on || p.mouse;
   const activePlayers = () => { const a = P.filter(active); return a.length ? a : [P[0]]; };
+  // 結算畫面：斷線的小朋友也要列出來（分數有保留）
+  const shownPlayers = () => { const a = P.filter(p => active(p) || p.cid); return a.length ? a : [P[0]]; };
   // 依人數把玩家平均排在畫面上（教學圈圈、結算卡片用）
   function slotX(p){ const ps = activePlayers(), n = ps.length, k = Math.max(0, ps.indexOf(p)); return W*(k+1)/(n+1); }
   function layout(n){ const sp = n <= 1 ? 0 : n === 2 ? 520 : n === 3 ? 370 : 285; return { sp, w: n <= 2 ? 420 : sp - 30 }; }
@@ -297,25 +337,58 @@ function startHost(){
     const el = document.getElementById('qr'); el.innerHTML = '';
     document.getElementById('roomNo').textContent = room;
     document.getElementById('joinUrl').textContent = joinURL();
-    if (typeof QRCode !== 'undefined') new QRCode(el, { text: joinURL(), width: 220, height: 220, correctLevel: QRCode.CorrectLevel.M });
-    else el.textContent = joinURL();
+    const mini = document.getElementById('miniQrImg'); mini.innerHTML = '';
+    if (typeof QRCode !== 'undefined') {
+      new QRCode(el, { text: joinURL(), width: 220, height: 220, correctLevel: QRCode.CorrectLevel.M });
+      new QRCode(mini, { text: joinURL(), width: 140, height: 140, correctLevel: QRCode.CorrectLevel.M });
+    } else el.textContent = joinURL();
   }
+  // 大螢幕左下角的「暫停／回首頁」按鈕、右下角的「斷線了？掃這裡」QR Code
+  const hbPause = document.getElementById('hbPause'), hbHome = document.getElementById('hbHome');
+  let hostUiKey = '';
+  function syncHostUi(){
+    const now = performance.now(), armed = homeArm > now;
+    const missing = phase !== 'lobby' && P.some(p => p.cid && !p.on);
+    const key = [phase, paused, resumeT > 0, armed, missing].join();
+    if (key === hostUiKey) return; hostUiKey = key;
+    document.getElementById('hostBar').hidden = phase === 'lobby';
+    hbPause.hidden = !PAUSABLE.includes(phase);
+    hbPause.textContent = paused ? '▶ 繼續' : '⏸ 暫停';
+    hbHome.textContent = armed ? '⚠ 再按一次回首頁' : '🏠 回首頁';
+    hbHome.classList.toggle('arm', armed);
+    document.getElementById('miniQr').hidden = !missing;
+  }
+  hbPause.onclick = () => { ensureAudio(); paused ? resumeGame() : pauseGame('⏸ 暫停一下', false); };
+  hbHome.onclick = () => {   // 按兩次才回首頁，避免不小心按到
+    if (homeArm > performance.now()) { homeArm = 0; backToLobby(); }
+    else homeArm = performance.now() + 3000;
+  };
   function onData(conn, d){
     if (!d || typeof d !== 'object') return;
     if (d.t === 'hi') {
+      // 1. 同一支手機回來 → 原本的位置；2. 沒人用過的位置；3. 實在沒有才用斷線者的位置
       let slot = P.findIndex(p => p.cid === d.cid);
+      const back = slot >= 0 && phase !== 'lobby';
+      if (slot < 0) slot = P.findIndex(p => !p.on && !p.cid);
       if (slot < 0) slot = P.findIndex(p => !p.on);
       if (slot < 0) { conn.send({ t:'full' }); setTimeout(() => conn.close(), 600); return; }
       const p = P[slot];
-      if (p.conn && p.conn !== conn) { try { p.conn.close(); } catch(e){} }
-      p.conn = conn; p.cid = d.cid; p.on = true; p.mouse = false; conn._slot = slot; p.lastUi = '';
+      if (p.conn && p.conn !== conn) { const old = p.conn; p.conn = null; try { old.close(); } catch(e){} }
+      p.conn = conn; p.cid = d.cid; p.on = true; p.mouse = false; conn._slot = slot; p.lastUi = ''; p.lastRx = performance.now();
       conn.send({ t:'you', slot, name: COLORS[slot].name, color: COLORS[slot].c, emoji: COLORS[slot].emoji });
       sfx('join'); updateLobby();
-      texts.push({ x: p.x, y: p.y-60, text: (slot+1)+'P 加入！', col: COLORS[slot].c, life: 1.5, size: 44 });
+      texts.push({ x: p.x, y: p.y-60, text: (slot+1) + (back ? 'P 回來了！' : 'P 加入！'), col: COLORS[slot].c, life: 1.5, size: 44 });
+      // 因為有人斷線而自動暫停的話，大家都回來就自動繼續
+      if (paused && pauseAuto && !P.some(q => q.cid && !q.on)) resumeGame();
       return;
     }
     const slot = conn._slot; if (slot == null) return;
-    const p = P[slot]; if (p.conn !== conn) return;
+    const p = P[slot]; if (p.conn !== conn) return;   // 舊的連線：不回 pong，手機就會自己重連
+    p.lastRx = performance.now();
+    if (d.t === 'ping') { try { conn.send({ t:'pong' }); } catch(e){} return; }
+    if (d.t === 'pause') { pauseGame(`${slot+1}P 按了暫停`, false); return; }
+    if (d.t === 'resume') { resumeGame(); return; }
+    if (d.t === 'home') { if (phase !== 'lobby') backToLobby(); return; }
     if (d.t === 'aim') { p.tx = W/2 + clamp(+d.x||0, -1, 1)*W/2; p.ty = H/2 + clamp(+d.y||0, -1, 1)*H/2; }
     else if (d.t === 'fire') fire(p);
     else if (d.t === 'bomb') bomb(p);
@@ -324,7 +397,11 @@ function startHost(){
   }
   function dropConn(conn){
     const s = conn._slot; if (s == null) return;
-    const p = P[s]; if (p.conn === conn) { p.conn = null; p.on = false; p.cal = -1; updateLobby(); }
+    const p = P[s]; if (p.conn !== conn) return;
+    p.conn = null; p.on = false; p.cal = -1; updateLobby();
+    try { conn.close(); } catch(e){}
+    // 遊戲進行中有人斷線（小朋友跳出畫面）→ 自動暫停，等他掃 QR Code 回來
+    pauseGame(`📵 ${s+1}P 斷線了`, true);
   }
   function updateLobby(){
     P.forEach((p,i) => {
@@ -337,7 +414,8 @@ function startHost(){
   function pushUi(p, force){
     if (!p.conn || !p.conn.open) return;
     const msg = { t:'ui', next: nextLabel(), score: (level===5||phase==='final') ? p.total : p.score,
-      bombs: p.bombs, stun: p.stun > 0, hint: hintFor(p) };
+      bombs: p.bombs, stun: p.stun > 0, hint: hintFor(p),
+      paused: paused || resumeT > 0, canPause: PAUSABLE.includes(phase), lobby: phase === 'lobby' };
     const s = JSON.stringify(msg);
     if (force || s !== p.lastUi) { p.lastUi = s; try { p.conn.send(msg); } catch(e){} }
   }
@@ -361,10 +439,24 @@ function startHost(){
   let boss = null, shake = 0, flash = 0, banner = null, bossWin = false;
   let tutStep = 0, tutDone = [false,false], tutHold = [0,0], tutNextT = -1;
   let tutSeen = lsGet('kbb_tut_done') === '1', forceTut = false;
+  // 暫停：paused=true 時整個遊戲停住；按繼續後 resumeT 倒數 3 秒再開始
+  const PAUSABLE = ['tut', 'intro', 'play'];
+  let paused = false, pauseWhy = '', pauseAuto = false, resumeT = 0, homeArm = 0;
+  function pauseGame(why, auto){
+    if (!PAUSABLE.includes(phase)) return;
+    if (paused) { pauseWhy = why; pauseAuto = pauseAuto && auto; return; }
+    paused = true; pauseWhy = why; pauseAuto = !!auto; resumeT = 0;
+    tone(523, .15, 'triangle', .14); tone(392, .2, 'triangle', .14, 0, .15);
+  }
+  function resumeGame(){
+    if (!paused) return;
+    paused = false; pauseAuto = false;
+    resumeT = phase === 'tut' ? .01 : 3;   // 教學不用倒數
+  }
   const clouds = Array.from({length:7}, (_,i) => ({ x: Math.random()*W, y: 60+Math.random()*320, s: .6+Math.random()*.9, v: 8+Math.random()*16 }));
 
   const TUT = [
-    { kind:'aim',   title:'第1步：移動準心', text:'手機頂端對準螢幕轉一轉（或用手指滑）\n把你的準心移到同顏色的圈圈裡！不準就按手機的「🎯 校準」', hint:'把準心移到圈圈裡' },
+    { kind:'aim',   title:'第1步：移動準心', text:'手機頂端對準螢幕轉一轉（或用手指滑）\n把你的準心移到同顏色的圈圈裡！不準就按手機的「☰ 選單 → 🎯 重新校準」', hint:'把準心移到圈圈裡' },
     { kind:'pop',   title:'第2步：射氣球',   text:'準心對準氣球，按手機上的「發射」按鈕 —— 砰！', hint:'對準氣球按「發射」' },
     { kind:'types', title:'第3步：認識氣球', text:'看懂了就按「發射」', hint:'看懂了按「懂了」' },
     { kind:'bomb',  title:'第4步：炸彈模式', text:'打破 💣 炸彈氣球可以拿到炸彈，再按手機的「💣」按鈕\n轟！附近的氣球通通爆掉！', hint:'打 💣 氣球，再按 💣 按鈕' },
@@ -372,6 +464,8 @@ function startHost(){
   ];
 
   function nextLabel(){
+    if (paused) return '繼續玩 ▶';
+    if (resumeT > 0) return null;
     if (phase === 'lobby') return '開始遊戲 ▶';
     if (phase === 'tut') { const k = TUT[tutStep].kind; return (k==='types'||k==='boss') ? '懂了 👍' : null; }
     if (phase === 'result') return '下一關 ▶';
@@ -379,6 +473,8 @@ function startHost(){
     return null;
   }
   function hintFor(p){
+    if (paused) return '⏸ 暫停中：人到齊了就按「繼續玩」';
+    if (resumeT > 0) return '準備…馬上開始！';
     if (phase === 'lobby') return '等大家都加入，就按「開始遊戲」';
     if (phase === 'tut') return tutDone[p.i] ? '✅ 完成！等其他人…' : TUT[tutStep].hint;
     if (phase === 'intro') return level === 5 ? '⚠ 大魔王來了！' : LV[level].name + ' ' + LV[level].diff;
@@ -387,17 +483,21 @@ function startHost(){
     if (phase === 'final') return bossWin ? '🎉 打敗大魔王了！' : '大魔王逃走了…';
     return '';
   }
-  const canShoot = () => phase === 'play' || (phase === 'tut' && ['aim','pop','bomb'].includes(TUT[tutStep].kind)) || phase === 'intro';
+  const canShoot = () => !paused && resumeT <= 0 && (phase === 'play' || (phase === 'tut' && ['aim','pop','bomb'].includes(TUT[tutStep].kind)) || phase === 'intro');
 
   function startGame(){
-    P.forEach(p => { p.total = 0; p.score = 0; p.bombs = 0; p.dmg = 0; p.stun = 0; });
+    P.forEach(p => { p.total = 0; p.score = 0; p.bombs = 0; p.dmg = 0; p.stun = 0; if (!p.on) p.cid = null; });
+    paused = false; resumeT = 0;
     document.getElementById('lobby').hidden = true;
     if (!tutSeen || forceTut) startTut(); else startLevel(1);
     forceTut = false;
   }
   function backToLobby(){
     phase = 'lobby'; balloons = []; spikes = []; boss = null; banner = null;
+    paused = false; resumeT = 0; level = 0;
+    P.forEach(p => { p.score = 0; p.total = 0; p.bombs = 0; p.stun = 0; if (!p.on) p.cid = null; });
     document.getElementById('lobby').hidden = false;
+    updateLobby();
   }
 
   /* ---------- 操作說明（教學） ---------- */
@@ -576,6 +676,8 @@ function startHost(){
     if (phase === 'tut' && TUT[tutStep].kind === 'bomb') tutMark(p.i);
   }
   function next(p){
+    if (paused) { resumeGame(); return; }
+    if (resumeT > 0) return;
     if (phase === 'lobby') { ensureAudio(); startGame(); }
     else if (phase === 'tut') { const k = TUT[tutStep].kind; if ((k==='types'||k==='boss') && phaseT > .6) tutMark(p.i); }
     else if (phase === 'result' && phaseT > 1.5) startLevel(level + 1);
@@ -600,15 +702,27 @@ function startHost(){
     requestAnimationFrame(loop);
   }
   function update(dt){
-    phaseT += dt; shake = Math.max(0, shake - dt); flash = Math.max(0, flash - dt);
-    if (banner) { banner.life -= dt; if (banner.life <= 0) banner = null; }
-    clouds.forEach(c => { c.x += c.v*dt; if (c.x > W + 200) c.x = -200; });
+    const now = performance.now();
     for (const p of P) {
       const k = Math.min(1, dt*18);
       p.x += (clamp(p.tx,0,W) - p.x)*k; p.y += (clamp(p.ty,0,H) - p.y)*k;
-      if (p.stun > 0) p.stun -= dt; if (p.cool > 0) p.cool -= dt;
       p.uiT -= dt; if (p.uiT <= 0) { p.uiT = .12; pushUi(p); }
+      // 手機超過 7 秒沒有任何訊息（例如小朋友跳出畫面）→ 當作斷線
+      if (p.on && p.conn && now - (p.lastRx || now) > 7000) dropConn(p.conn);
     }
+    syncHostUi();
+    // 暫停中：只動準心，其他全部停住；按繼續後倒數 3 秒
+    if (paused) return;
+    if (resumeT > 0) {
+      const before = Math.ceil(resumeT); resumeT -= dt;
+      if (resumeT <= 0) { resumeT = 0; if (phase !== 'tut') sfx('go'); }
+      else if (Math.ceil(resumeT) !== before) sfx('tick');
+      return;
+    }
+    phaseT += dt; shake = Math.max(0, shake - dt); flash = Math.max(0, flash - dt);
+    if (banner) { banner.life -= dt; if (banner.life <= 0) banner = null; }
+    clouds.forEach(c => { c.x += c.v*dt; if (c.x > W + 200) c.x = -200; });
+    for (const p of P) { if (p.stun > 0) p.stun -= dt; if (p.cool > 0) p.cool -= dt; }
     if (phase === 'tut') updateTut(dt);
     if (phase === 'intro') {
       const need = level === 5 ? 4 : 3.2;
@@ -759,6 +873,22 @@ function startHost(){
     ctx.fillStyle = '#ff4757'; ctx.beginPath(); ctx.arc(-9, -4, 6, 0, 6.283); ctx.arc(9, -4, 6, 0, 6.283); ctx.fill();
     ctx.restore();
   }
+  function drawPause(){
+    ctx.fillStyle = 'rgba(20,30,60,.6)'; ctx.fillRect(-400, -400, W+800, H+800);
+    if (!paused) {   // 繼續前倒數
+      if (resumeT > .05) { txt(String(Math.ceil(resumeT)), W/2, H/2 - 20, 220, '#ffd32a'); txt('準備…', W/2, H/2 + 130, 50, '#fff', 'center', false); }
+      return;
+    }
+    const gone = P.filter(p => p.cid && !p.on);
+    panel(W/2 - 600, 190, 1200, 420 + gone.length*46);
+    txt('⏸ 暫停中', W/2, 265, 84, '#223', 'center', false);
+    txt(pauseWhy, W/2, 345, 40, '#e1a800', 'center', false);
+    gone.forEach((p, k) => txt(`${COLORS[p.i].emoji} ${p.i+1}P 斷線了：用手機掃右下角的 QR Code 就能回來（分數還在）`,
+      W/2, 410 + k*46, 28, COLORS[p.i].d, 'center', false));
+    const y = 430 + gone.length*46;
+    txt(gone.length ? '回來了就會自動繼續；不等了就按手機的「繼續玩 ▶」' : '按手機的「繼續玩 ▶」繼續', W/2, y + 40, 32, '#556', 'center', false);
+    txt('（大螢幕：左下角「▶ 繼續」或按 P 鍵）', W/2, y + 90, 24, '#889', 'center', false);
+  }
   function drawCal(time){
     const cps = P.filter(p => p.on && p.cal >= 0);
     if (!cps.length) return;
@@ -801,7 +931,7 @@ function startHost(){
     // 四個分數框：1P、2P 在左邊，3P、4P 在右邊，中間留給計時器
     const BX = [20, 316, W - 596, W - 300], BW = 280;
     for (const p of P) {
-      if (!active(p) && p.i !== 0) continue;
+      if (!active(p) && !p.cid && p.i !== 0) continue;
       const x = BX[p.i];
       ctx.fillStyle = COLORS[p.i].c; rr(x, 20, BW, 96, 24); ctx.fill();
       ctx.fillStyle = 'rgba(255,255,255,.25)'; rr(x+6, 26, BW-12, 40, 18); ctx.fill();
@@ -809,7 +939,7 @@ function startHost(){
       txt(`${COLORS[p.i].emoji} ${p.i+1}P`, x + 18, 47, 28, '#fff', 'left', false);
       txt(String(sc), x + BW - 18, 50, 44, '#fff', 'right', false);
       txt(p.bombs ? '💣'.repeat(p.bombs) : '💣 0', x + 18, 92, 26, '#fff', 'left', false);
-      if (!active(p)) txt('未加入', x + BW - 18, 92, 22, 'rgba(255,255,255,.85)', 'right', false);
+      if (!active(p)) txt(p.cid ? '📵 斷線' : '未加入', x + BW - 18, 92, 22, 'rgba(255,255,255,.95)', 'right', false);
       else if (p.cal >= 0) txt('🎯 校準中', x + BW - 18, 92, 22, '#fff', 'right', false);
     }
     if (phase === 'play' || phase === 'intro') {
@@ -892,7 +1022,7 @@ function startHost(){
   function drawResult(){
     panel(W/2 - 560, 170, 1120, 560);
     txt(`${LV[level].name} 結束！`, W/2, 240, 64, '#223', 'center', false);
-    const ps = activePlayers(), L = layout(ps.length);
+    const ps = shownPlayers(), L = layout(ps.length);
     const best = Math.max(...ps.map(p => p.score));
     ps.forEach((p, idx) => {
       const x = W/2 + (idx - (ps.length-1)/2)*L.sp;
@@ -911,7 +1041,7 @@ function startHost(){
   function drawFinal(){
     panel(W/2 - 600, 130, 1200, 640);
     txt(bossWin ? '🎉 打敗大魔王了！🎉' : '大魔王逃走了…再挑戰一次！', W/2, 210, bossWin ? 72 : 58, bossWin ? '#e84393' : '#6c2bb0', 'center', false);
-    const ps = activePlayers(), L = layout(ps.length);
+    const ps = shownPlayers(), L = layout(ps.length);
     const best = Math.max(...ps.map(p => p.total));
     ps.forEach((p, idx) => {
       const x = W/2 + (idx - (ps.length-1)/2)*(L.sp ? L.sp + 20 : 0);
@@ -968,6 +1098,7 @@ function startHost(){
     }
     for (const p of P) drawCross(p, time);
     drawCal(time);
+    if (paused || resumeT > 0) drawPause();
     if (flash > 0) { ctx.globalAlpha = Math.min(.7, flash); ctx.fillStyle = '#fff'; ctx.fillRect(-400, -400, W+800, H+800); ctx.globalAlpha = 1; }
   }
 
@@ -986,6 +1117,7 @@ function startHost(){
       else if (phase === 'final' || phase === 'lobby') startGame();
     }
     if (e.key === 'Escape' && phase !== 'lobby') backToLobby();
+    if (e.key === 'p' || e.key === 'P' || e.key === ' ') { if (paused) resumeGame(); else pauseGame('⏸ 暫停一下', false); }
     if ((e.key === 'b' || e.key === 'B') && P[0].mouse) bomb(P[0]);
   });
   document.getElementById('btnStart').onclick = () => { ensureAudio(); startGame(); };
@@ -1006,8 +1138,10 @@ function startHost(){
 function startPad(){
   document.getElementById('pad').hidden = false;
   const $ = id => document.getElementById(id);
-  let cid = null; try { cid = sessionStorage.getItem('kbb_cid'); } catch(e){}
-  if (!cid) { cid = Math.random().toString(36).slice(2, 10); try { sessionStorage.setItem('kbb_cid', cid); } catch(e){} }
+  // 每支手機固定一個代號（存在 localStorage），關掉網頁重新掃碼也會回到原本的 1P/2P…（測試可用 &cid=xxx 指定）
+  let cid = Q.get('cid') || lsGet('kbb_cid');
+  if (!cid) { cid = Math.random().toString(36).slice(2, 10); lsSet('kbb_cid', cid); }
+  let lastRx = 0;
   let room = (Q.get('join') || '').replace(/\D/g, '');
   let peer = null, conn = null, me = null, mode = null, retryT = null;
   let ax = 0, ay = 0, sentX = 9, sentY = 9;
@@ -1033,17 +1167,51 @@ function startPad(){
       peer.on('disconnected', () => { try { peer.reconnect(); } catch(e){} });
       return;
     }
-    if (!peer.open) return;
+    if (!peer.open) {   // 跟伺服器斷了：試著重連，過一下再試
+      if (peer.disconnected) { try { peer.reconnect(); } catch(e){} }
+      retryT = setTimeout(connect, 2000); return;
+    }
     $('pConnMsg').textContent = '連線到房間 ' + room + ' …';
-    conn = peer.connect(PREFIX + room, { reliable: true, serialization: 'json' });
-    conn.on('open', () => send({ t: 'hi', cid }));
-    conn.on('data', onMsg);
-    conn.on('close', () => { show('pConnect'); $('pConnMsg').textContent = '斷線了，重新連線中…'; retryT = setTimeout(connect, 1500); });
+    const c = peer.connect(PREFIX + room, { reliable: true, serialization: 'json' });
+    conn = c;
+    c.on('open', () => { if (conn !== c) return; lastRx = performance.now(); send({ t: 'hi', cid }); });
+    c.on('data', d => { if (conn !== c) return; lastRx = performance.now(); onMsg(d); });
+    const lost = () => {
+      if (conn !== c) return;
+      conn = null; showLost(); clearTimeout(retryT); retryT = setTimeout(connect, 1200);
+    };
+    c.on('close', lost); c.on('error', lost);
   }
+  function showLost(){
+    $('pMenu').hidden = true;
+    show('pConnect');
+    $('pConnMsg').innerHTML = '📶 斷線了，重新連線中…<br><small>一直連不上的話，再掃一次大螢幕的 QR Code<br>（會回到原本的玩家，分數也還在）</small>';
+  }
+  function forceReconnect(){
+    const c = conn; conn = null;
+    try { if (c) c.close(); } catch(e){}
+    showLost(); connect();
+  }
+  // 心跳：每 2 秒問一下大螢幕，超過 6.5 秒沒回應就重新連線
+  setInterval(() => {
+    if (!conn || !conn.open || !me) return;
+    send({ t: 'ping' });
+    if (performance.now() - lastRx > 6500) forceReconnect();
+  }, 2000);
+  // 小朋友切出去再回來：馬上檢查連線還在不在
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible' || !room) return;
+    if (!conn || !conn.open) { forceReconnect(); return; }
+    const t = performance.now(); send({ t: 'ping' });
+    setTimeout(() => { if (lastRx < t) forceReconnect(); }, 1500);
+  });
   function onMsg(d){
     if (!d) return;
+    if (d.t === 'pong') return;
     if (d.t === 'you') {
+      const back = !!me;
       me = d; sentX = sentY = 9;
+      if (back) setTimeout(() => { $('pHint').textContent = '✅ 回到遊戲了！'; }, 300);
       const col = COLORS[d.slot];
       [$('pBadge1'), $('pBadge2'), $('pBadge3')].forEach(b => { b.style.background = col.c; });
       $('pBadge1').textContent = `${col.emoji} 你是 ${d.slot+1}P ${col.name}`;
@@ -1055,7 +1223,7 @@ function startPad(){
       if (inCal) { show('pCal'); send({ t: 'cal', step: calK }); }
       else if (mode) show('pCtrl'); else show('pSetup');
     } else if (d.t === 'full') {
-      $('pConnMsg').textContent = '已經有兩位玩家了 😢';
+      $('pConnMsg').textContent = '已經有四位玩家了 😢';
     } else if (d.t === 'ui') {
       ui = d; renderUi();
     } else if (d.t === 'buzz') {
@@ -1181,9 +1349,9 @@ function startPad(){
     } catch(e) {}
     // 不管權限回傳什麼，只看 1.8 秒內有沒有真的收到陀螺儀資料（沒有才改用手指滑動）
     mode = 'gyro'; ax = ay = 0;
-    $('aimTxt').innerHTML = '📱 手機頂端對準螢幕<br>轉動手機移動準心<br><small>不準了就按「🎯 校準」<br>只是偏掉就對準中間按「⊕ 置中」</small>';
+    $('aimTxt').innerHTML = '📱 手機頂端對準螢幕<br>轉動手機移動準心<br><small>只是偏掉：對準中間按「⊕ 置中」<br>很不準：按「☰ 選單 → 🎯 重新校準」</small>';
     $('aimDot').hidden = true;
-    $('btnMode').textContent = '👆';
+    $('mSwitch').textContent = '👆 改用手指滑動';
     if (!calOnce) startCal(); else show('pCtrl');
     wake();
     setTimeout(() => { if (mode === 'gyro' && !gyroSeen) { alert('這支手機沒辦法用體感（沒有允許，或需要 https 網址），先改用手指滑動！'); useTouch(); } }, 1800);
@@ -1193,16 +1361,32 @@ function startPad(){
     mode = 'touch'; ax = ay = 0;
     $('aimTxt').innerHTML = '👆 在這裡用手指滑動<br>移動準心';
     $('aimDot').hidden = false;
-    $('btnMode').textContent = '📱';
+    $('mSwitch').textContent = '📱 改用轉動手機';
     show('pCtrl'); wake();
   }
   $('mGyro').onclick = useGyro; $('mTouch').onclick = useTouch;
-  $('btnMode').onclick = () => mode === 'gyro' ? useTouch() : useGyro();
+  /* ---- 選單：暫停／校準／切換瞄準／回首頁 ---- */
+  const closeMenu = () => { $('pMenu').hidden = true; };
+  function openMenu(){
+    $('menuMain').hidden = false; $('menuConfirm').hidden = true;
+    $('mPause').textContent = ui.paused ? '▶ 繼續遊戲' : '⏸ 暫停遊戲';
+    $('mPause').disabled = !ui.canPause && !ui.paused;
+    $('mHome').hidden = !!ui.lobby;
+    $('mCal').hidden = mode !== 'gyro';
+    $('pMenu').hidden = false;
+  }
+  $('btnMenu').onclick = openMenu;
+  $('mClose').onclick = closeMenu;
+  $('mPause').onclick = () => { send({ t: ui.paused ? 'resume' : 'pause' }); closeMenu(); };
+  $('mCal').onclick = () => { closeMenu(); startCal(); };
+  $('mSwitch').onclick = () => { closeMenu(); mode === 'gyro' ? useTouch() : useGyro(); };
+  $('mHome').onclick = () => { $('menuMain').hidden = true; $('menuConfirm').hidden = false; };
+  $('mNo').onclick = closeMenu;
+  $('mYes').onclick = () => { send({ t: 'home' }); closeMenu(); };
   $('btnCenter').onclick = () => {   // 快速置中：保留校準範圍，只把「現在指的方向」當成畫面中間
     if (mode === 'gyro' && live) { const s = avgSample(); if (s) { live.yc = s.y; live.pc = s.p; } }
     ax = ay = 0;
   };
-  $('btnCal').onclick = () => { if (mode === 'gyro') startCal(); else { calOnce = false; useGyro(); } };
 
   /* ---- 瞄準：手指滑動 ---- */
   const padEl = $('aimPad'); let lastPt = null;
